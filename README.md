@@ -45,3 +45,18 @@ These 30 operators are mathematical proxies, not biologically validated STDP or 
 Never commit Kaggle tokens, raw datasets, private records or model checkpoints. Local `storage/` is gitignored.
 
 MIT license.
+
+## P2 — controlled benchmarks
+Run all 30 operators and the baseline over three seeds:
+
+```bash
+python scripts/benchmark.py --dataset storage/dataset.jsonl --epochs 5 --seeds 42 43 44
+```
+
+For a fast smoke comparison:
+
+```bash
+python scripts/benchmark.py --operators baseline softmax_beta coupled_dynamics --epochs 1 --seeds 42
+```
+
+P2 writes JSON and CSV summaries, individual run histories, checkpoints and dataset SHA-256 fingerprints into `storage/benchmarks/`. The **Benchmarks** dashboard tab compares Macro-F1, accuracy, elapsed time, parameter counts and learning curves. Runs use the same split seed and epoch count; parameter counts and FLOPs can differ. Do not interpret the leaderboard as proof of statistical superiority. For unbiased model selection, choose configurations using validation metrics before a final held-out evaluation.
