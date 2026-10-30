@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "semantic-liquidity-nlp"
+version = "0.1.0"
+description = "Experimental semantic liquidity neural layers for NLP"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.1", "numpy>=1.24"]
+
+[project.optional-dependencies]
+lab = ["streamlit>=1.35", "pandas>=2.0", "plotly>=5.0", "kaggle>=1.6"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
