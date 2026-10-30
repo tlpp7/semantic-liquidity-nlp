@@ -9,7 +9,7 @@ from semantic_liquidity import OPERATOR_NAMES
 st.set_page_config(page_title="Semantic Liquidity Lab", layout="wide")
 st.title("Semantic Liquidity Lab")
 st.caption("P1 · Dataset registry, supervised training and reproducible experiment metrics")
-datasets, training, metrics = st.tabs(["Datasets", "Training", "Metrics"])
+datasets, training, metrics, benchmarks = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks"])
 with datasets:
     st.subheader("Import CSV")
     upload = st.file_uploader("CSV file", type="csv")
@@ -59,3 +59,7 @@ with metrics:
                 st.line_chart(df[["val_accuracy", "val_macro_f1"]])
     else:
         st.info("No experiments yet. Import a dataset and run training.")
+
+with benchmarks:
+    from benchmark_view import render_benchmarks
+    render_benchmarks()
