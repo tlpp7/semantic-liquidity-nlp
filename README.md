@@ -1,55 +1,47 @@
 # Semantic Liquidity NLP
 
-Public research prototype for **semantic liquidity**: context-sensitive meaning selection under uncertainty, plasticity, and stability constraints.
+Experimental NLP engine with 30 differentiable PyTorch semantic operators inspired by semantic activation, entropy, surprisal, plasticity proxies, flexibility and consolidation.
 
-## P0 foundation
-- **30 differentiable PyTorch operators** across six families: activation, uncertainty, plasticity proxies, flexibility, consolidation proxies, and coupled dynamics.
-- Dataset ingestion from CSV to JSONL with SQLite registry.
-- Kaggle dataset download CLI (requires your own Kaggle credentials and license/terms compliance).
-- Streamlit dashboard to import data, inspect operators and view dataset registry.
-- GitHub Actions tests (30 operator gradient checks + 2 basic checks).
+## P0 + P1
+- 30 operator variants in six mathematical families
+- CSV ingestion into local JSONL + SQLite registry
+- Kaggle dataset CLI (requires credentials and compliance with dataset terms)
+- **P1:** reproducible supervised text classifier (embedding + bidirectional GRU + optional SLL)
+- **P1:** train/validation/test splits (80/10/10), train-only vocabulary, fixed random seed
+- **P1:** validation loss, accuracy, macro-F1, best-validation checkpoint, held-out test metrics
+- **P1:** run metadata and metrics in SQLite and JSON; Streamlit training/experiment dashboard
+- GitHub Actions unit tests
 
-**Scientific status:** these operators are hypotheses and differentiable mathematical proxies. In particular STDP and hippocampal/cortical consolidation here are not biologically faithful simulations. No benchmark improvement is claimed.
-
-## Install
+## Installation
 ```bash
 python -m pip install -e ".[dev,lab]"
 pytest -q
-streamlit run dashboard/app.py
+streamlit run dashboard/app.py --server.address 0.0.0.0
 ```
 
-## Kaggle import
+## Dataset
+Use the dashboard to upload a labeled CSV with `text` and `target` columns, or:
 ```bash
 python scripts/kaggle_download.py owner/dataset-name
 ```
-Then import a suitable CSV in the dashboard, specifying text and label column names.
+Import the resulting CSV via the dashboard. Kaggle dataset licensing and authentication are your responsibility.
 
-## API
-```python
-import torch
-from semantic_liquidity import SemanticLiquidityLayer, OPERATOR_NAMES
-layer = SemanticLiquidityLayer(dim=64, operator="coupled_dynamics")
-output = layer(torch.randn(2, 12, 64))
+## Train
+```bash
+python scripts/train.py --dataset storage/dataset.jsonl --operator coupled_dynamics --epochs 5 --seed 42
+python scripts/train.py --dataset storage/dataset.jsonl --operator baseline --epochs 5 --seed 42
 ```
+Each run saves a local checkpoint in `storage/runs/`, a JSON metrics history and an SQLite experiment row.
 
-## Architecture
-```mermaid
-flowchart LR
-  A[Text] --> B[Encoder embeddings]
-  B --> C[SemanticLiquidityLayer]
-  C --> D[Downstream NLP head]
-  E[Kaggle CSV] --> F[JSONL + SQLite]
-  F --> G[Training pipeline - next milestone]
-  G --> H[Metrics dashboard - next milestone]
-```
+## Experimental limitations
+These 30 operators are mathematical proxies, not biologically validated STDP or memory consolidation simulations. P1 is a functional training pipeline, **not evidence of improved NLP performance**. Data splitting is randomized but not stratified; tiny or imbalanced datasets can fail if a class is absent from the training set. For serious benchmarks use multiple seeds, stratified splits and identical compute budgets.
 
 ## Roadmap
-- **P0**: public repository, 30 mathematical operators, dataset registry, dashboard scaffold, CI.
-- **P1**: real NLP training, train/validation/test splits, metrics and model checkpoints.
-- **P2**: benchmark all operators against controlled baselines, multiple seeds and ablations.
-- **P3**: continual learning, calibrated uncertainty, semantic visualization, remote artifact storage.
+- P0: project foundation, differentiable operators, dataset ingestion, dashboard and CI
+- **P1: supervised training, checkpoints, run tracking and visualization**
+- P2: systematic benchmarks across operators, controlled baselines and ablation studies
+- P3: continual learning, semantic dynamics visualization, scalable artifact storage
 
-## Data and security
-Never commit Kaggle API tokens, personal datasets, raw corpora or model checkpoints. Local artifacts are gitignored. Review each dataset license before use.
+Never commit Kaggle tokens, raw datasets, private records or model checkpoints. Local `storage/` is gitignored.
 
 MIT license.
