@@ -9,7 +9,7 @@ from semantic_liquidity import OPERATOR_NAMES
 st.set_page_config(page_title="Semantic Liquidity Lab", layout="wide")
 st.title("Semantic Liquidity Lab")
 st.caption("P1 · Dataset registry, supervised training and reproducible experiment metrics")
-datasets, training, metrics, benchmarks = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks"])
+datasets, training, metrics, benchmarks, continual = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks", "Continual Learning"])
 with datasets:
     st.subheader("Import CSV")
     upload = st.file_uploader("CSV file", type="csv")
@@ -63,3 +63,31 @@ with metrics:
 with benchmarks:
     from benchmark_view import render_benchmarks
     render_benchmarks()
+
+with continual:
+    st.subheader("P3 · Continual learning and semantic stability")
+    task_count = st.slider("Sequential tasks", 2, 8, 3)
+    task_epochs = st.slider("Epochs per task", 1, 10, 2)
+    ewc_strength = st.number_input("EWC strength", min_value=0.0, max_value=100.0, value=1.0)
+    continual_operator = st.selectbox("Continual operator", ["baseline", *OPERATOR_NAMES])
+    if st.button("Run continual learning"):
+        from semantic_liquidity.train import load_records
+        from semantic_liquidity.continual import run_continual
+        try:
+            with st.spinner("Training sequential tasks..."):
+                result = run_continual(load_records("storage/dataset.jsonl"), operator=continual_operator,
+                                       n_tasks=task_count, epochs=task_epochs, ewc_lambda=ewc_strength)
+            st.metric("Mean forgetting (training-set proxy)", f"{result['mean_forgetting']:.3f}")
+            matrix = pd.DataFrame(result["accuracy_matrix"],
+                                  columns=[f"Task {i+1}" for i in range(task_count)])
+            matrix.index = [f"After task {i+1}" for i in range(task_count)]
+            st.dataframe(matrix)
+            st.line_chart(matrix)
+            st.warning("Exploratory proxy: evaluation uses task training records, not independent held-out samples.")
+        except (ValueError, FileNotFoundError) as exc:
+            st.error(str(exc))
+    st.subheader("Saved continual experiments")
+    for path in sorted(Path("storage/continual").glob("*.json"), reverse=True)[:15]:
+        item = json.loads(path.read_text(encoding="utf-8"))
+        with st.expander(path.name):
+            st.json(item)
