@@ -9,7 +9,7 @@ from semantic_liquidity import OPERATOR_NAMES
 st.set_page_config(page_title="Semantic Liquidity Lab", layout="wide")
 st.title("Semantic Liquidity Lab")
 st.caption("P1 · Dataset registry, supervised training and reproducible experiment metrics")
-datasets, training, metrics, benchmarks, continual = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks", "Continual Learning"])
+datasets, training, metrics, benchmarks, continual, catalog = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks", "Continual Learning", "Data Catalog"])
 with datasets:
     st.subheader("Import CSV")
     upload = st.file_uploader("CSV file", type="csv")
@@ -91,3 +91,29 @@ with continual:
         item = json.loads(path.read_text(encoding="utf-8"))
         with st.expander(path.name):
             st.json(item)
+
+with catalog:
+    from semantic_liquidity.catalog import list_datasets, import_csv
+    st.subheader("P5 · Versioned dataset catalog")
+    catalog_file = st.file_uploader("Import catalog CSV", type="csv", key="catalog_upload")
+    source_name = st.text_input("Source / provenance", value="local")
+    license_name = st.text_input("Dataset license", value="unknown")
+    if catalog_file and st.button("Add to catalog"):
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".csv", delete=False) as handle:
+            handle.write(catalog_file.getvalue())
+            path = Path(handle.name)
+        try:
+            item = import_csv(path, text_col=text_col, label_col=label_col,
+                              source=source_name, license_name=license_name)
+            st.success(f"Dataset version {item['sha256'][:12]}: {item['rows']} records")
+        except ValueError as exc:
+            st.error(str(exc))
+        finally:
+            path.unlink(missing_ok=True)
+    items = list_datasets()
+    if items:
+        st.dataframe(pd.DataFrame(items)[["id", "source", "license", "rows", "skipped", "path"]])
+        st.caption("Use the catalog path as training dataset. Licenses are user-supplied metadata, not verified automatically.")
+    else:
+        st.info("No catalog datasets yet.")
