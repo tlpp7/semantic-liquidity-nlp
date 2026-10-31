@@ -9,6 +9,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from .layers import SemanticLiquidityLayer, OPERATOR_NAMES
+from .validation import stratified_split, leakage_report, detect_exact_duplicates
 
 PAD, UNK = "<pad>", "<unk>"
 
@@ -79,7 +80,13 @@ def run_training(dataset="storage/dataset.jsonl", operator="softmax_beta", epoch
     random.seed(seed)
     torch.manual_seed(seed)
     rows = load_records(dataset)
-    train, val, test = split_records(rows, seed)
+    quality = detect_exact_duplicates(rows)
+    if quality['duplicates']:
+        raise ValueError('Duplicate normalized texts detected; import through P5 catalog with deduplication first')
+    train, val, test = stratified_split(rows, seed)
+    leakage = leakage_report(train, val, test)
+    if any(leakage.values()):
+        raise ValueError(f'Text leakage between partitions: {leakage}')
     vocab = build_vocab(train)
     labels = {label: i for i, label in enumerate(sorted({str(r["label"]) for r in train}))}
     if len(labels) < 2 or any(str(r["label"]) not in labels for r in val + test):
@@ -126,7 +133,7 @@ def run_training(dataset="storage/dataset.jsonl", operator="softmax_beta", epoch
     torch.save({"model": best_state, "vocab": vocab, "labels": labels, "operator": operator, "max_length": max_length}, checkpoint)
     result = {"run_id": run_id, "operator": operator, "seed": seed, "epochs": epochs, "train_size": len(train),
               "val_size": len(val), "test_size": len(test), "test_loss": test_loss,
-              "test_accuracy": test_accuracy, "test_macro_f1": test_f1, "checkpoint": str(checkpoint), "history": history}
+              "test_accuracy": test_accuracy, "test_macro_f1": test_f1, "checkpoint": str(checkpoint), "history": history, "split_method": "stratified", "leakage": leakage}
     (root / f"{run_id}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     with sqlite3.connect(root / "experiments.sqlite") as con:
         con.execute("CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, operator TEXT, seed INTEGER, test_accuracy REAL, test_macro_f1 REAL, checkpoint TEXT)")
