@@ -75,3 +75,22 @@ Prototype diagnostics are available through `semantic_liquidity.semantic_analysi
 Optional S3-compatible artifact upload (AWS S3 or MinIO) is implemented in `semantic_liquidity.artifacts.upload_artifact`. Supply credentials through environment variables or an IAM role, never through Git-tracked files. Upload is **explicit**, not automatic.
 
 **Important experimental limitations:** tasks are randomly partitioned batches of one dataset, not independently defined domains; the current continual-learning accuracy matrix evaluates on training records, not held-out data. The Fisher approximation is diagonal and simplified. P3 is a research scaffold, not evidence of resistance to catastrophic forgetting. Future work should use domain-shift benchmarks, stratified per-task held-out evaluation, and repeated seeds.
+
+## P4 — validation and uncertainty
+
+Training now uses class-stratified train/validation/test partitions and rejects exact normalized-text duplicates or overlaps. Each class needs at least ten examples for the default 80/10/10 split. Use the P5 catalog to normalize and deduplicate data first.
+
+`semantic_liquidity.validation` provides paired bootstrap confidence intervals, leakage reports and duplicate/conflicting-label diagnostics. The bootstrap is a descriptive paired estimator, not proof of statistical superiority; for model comparisons, ensure aligned observations and avoid repeated test-set selection.
+
+## P5 — dataset catalog and provenance
+
+```bash
+python scripts/catalog.py csv my_dataset.csv --text-col text --label-col target --license CC0
+python scripts/catalog.py list
+# optional, requires Hugging Face datasets and license review:
+python scripts/catalog.py hf imdb --split train --text-col text --label-col label --revision YOUR_PINNED_REVISION
+```
+
+Each imported dataset is normalized, deduplicated, content-addressed by SHA-256 and recorded in SQLite with class counts, source and declared license. The Data Catalog tab supports CSV ingestion. Source/license fields are declarations, not automatically verified facts. Kaggle datasets can be downloaded with the existing CLI and then imported into this catalog.
+
+P4/P5 are functional foundations; complete nested cross-validation, dataset cards, license verification and statistical significance reporting in benchmark dashboards remain future enhancements.
