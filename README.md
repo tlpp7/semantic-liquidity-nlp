@@ -60,3 +60,18 @@ python scripts/benchmark.py --operators baseline softmax_beta coupled_dynamics -
 ```
 
 P2 writes JSON and CSV summaries, individual run histories, checkpoints and dataset SHA-256 fingerprints into `storage/benchmarks/`. The **Benchmarks** dashboard tab compares Macro-F1, accuracy, elapsed time, parameter counts and learning curves. Runs use the same split seed and epoch count; parameter counts and FLOPs can differ. Do not interpret the leaderboard as proof of statistical superiority. For unbiased model selection, choose configurations using validation metrics before a final held-out evaluation.
+
+## P3 — continual learning, diagnostics, and optional object storage
+
+P3 introduces sequential-task training with optional diagonal empirical Fisher / EWC penalty, accuracy matrices, and a descriptive forgetting metric. The Streamlit **Continual Learning** tab visualizes sequential results.
+
+```bash
+python scripts/continual.py --dataset storage/dataset.jsonl --tasks 3 --epochs 2 --ewc-lambda 1.0
+streamlit run dashboard/app.py
+```
+
+Prototype diagnostics are available through `semantic_liquidity.semantic_analysis.inspect_layer(layer, embeddings)`, returning per-token prototype probabilities, normalized entropy, and prototype norms.
+
+Optional S3-compatible artifact upload (AWS S3 or MinIO) is implemented in `semantic_liquidity.artifacts.upload_artifact`. Supply credentials through environment variables or an IAM role, never through Git-tracked files. Upload is **explicit**, not automatic.
+
+**Important experimental limitations:** tasks are randomly partitioned batches of one dataset, not independently defined domains; the current continual-learning accuracy matrix evaluates on training records, not held-out data. The Fisher approximation is diagonal and simplified. P3 is a research scaffold, not evidence of resistance to catastrophic forgetting. Future work should use domain-shift benchmarks, stratified per-task held-out evaluation, and repeated seeds.
