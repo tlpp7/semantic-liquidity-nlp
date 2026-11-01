@@ -6,6 +6,7 @@ from pathlib import Path
 import torch
 from torch.nn import functional as F
 from .train import TextClassifier, build_vocab, encode, scores
+from .memory import ReplayBuffer
 
 def make_tasks(records, n_tasks=3, seed=42):
     if n_tasks < 2:
@@ -44,8 +45,9 @@ def ewc_penalty(model, snapshots):
     return penalty
 
 def run_continual(records, operator="coupled_dynamics", n_tasks=3, epochs=2,
-                  ewc_lambda=0.0, seed=42, output_dir="storage/continual"):
-    if epochs < 1 or ewc_lambda < 0:
+                  ewc_lambda=0.0, seed=42, output_dir="storage/continual",
+                  replay_capacity=0, replay_samples=0):
+    if epochs < 1 or ewc_lambda < 0 or replay_capacity < 0 or replay_samples < 0:
         raise ValueError("epochs must be positive and lambda nonnegative")
     random.seed(seed)
     torch.manual_seed(seed)
@@ -56,10 +58,12 @@ def run_continual(records, operator="coupled_dynamics", n_tasks=3, epochs=2,
     vocab = build_vocab(records)
     model = TextClassifier(len(vocab), len(labels), operator=operator)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    replay = ReplayBuffer(replay_capacity, seed) if replay_capacity else None
     snapshots = []
     matrix = []
     for task in tasks:
-        x, y = encode(task, vocab, labels)
+        rehearsal = replay.sample(replay_samples) if replay else []
+        x, y = encode(task + rehearsal, vocab, labels)
         for _ in range(epochs):
             model.train()
             for ix in torch.randperm(len(x)).split(32):
@@ -76,6 +80,8 @@ def run_continual(records, operator="coupled_dynamics", n_tasks=3, epochs=2,
                 px, py = encode(past, vocab, labels)
                 row.append(scores(model(px), py, len(labels))[0])
         matrix.append(row)
+        if replay:
+            replay.add(task)
         snapshots.append((
             {name: p.detach().clone() for name, p in model.named_parameters()},
             estimate_fisher(model, x, y),
@@ -86,10 +92,12 @@ def run_continual(records, operator="coupled_dynamics", n_tasks=3, epochs=2,
         best_previous = max(matrix[t][task_id] for t in range(task_id, n_tasks - 1))
         forgetting.append(best_previous - matrix[-1][task_id])
     result = {"operator": operator, "seed": seed, "ewc_lambda": ewc_lambda,
-              "accuracy_matrix": matrix, "mean_forgetting": sum(forgetting)/len(forgetting) if forgetting else 0.0,
+              "accuracy_matrix": matrix, "replay_capacity": replay_capacity,
+              "replay_samples": replay_samples, "replay_stats": replay.stats() if replay else None,
+              "mean_forgetting": sum(forgetting)/len(forgetting) if forgetting else 0.0,
               "note": "Exploratory sequential batches; evaluation reuses training records. Not a held-out continual-learning benchmark."}
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    path = out / f"continual-{operator}-{seed}-{ewc_lambda}.json"
+    path = out / f"continual-{operator}-{seed}-{ewc_lambda}-replay{replay_capacity}-{replay_samples}.json"
     path.write_text(json.dumps(result, indent=2), encoding="utf-8")
     return result
