@@ -9,7 +9,7 @@ from semantic_liquidity import OPERATOR_NAMES
 st.set_page_config(page_title="Semantic Liquidity Lab", layout="wide")
 st.title("Semantic Liquidity Lab")
 st.caption("P1 · Dataset registry, supervised training and reproducible experiment metrics")
-datasets, training, metrics, benchmarks, continual, catalog, observability = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks", "Continual Learning", "Data Catalog", "Observability"])
+datasets, training, metrics, benchmarks, continual, catalog, observability, tuning = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks", "Continual Learning", "Data Catalog", "Observability", "AutoTuning"])
 with datasets:
     st.subheader("Import CSV")
     upload = st.file_uploader("CSV file", type="csv")
@@ -70,13 +70,16 @@ with continual:
     task_epochs = st.slider("Epochs per task", 1, 10, 2)
     ewc_strength = st.number_input("EWC strength", min_value=0.0, max_value=100.0, value=1.0)
     continual_operator = st.selectbox("Continual operator", ["baseline", *OPERATOR_NAMES])
+    replay_capacity = st.number_input("Replay buffer capacity (0 disables)", min_value=0, max_value=4096, value=0, step=32)
+    replay_samples = st.number_input("Replay samples per task", min_value=0, max_value=1024, value=0, step=16)
     if st.button("Run continual learning"):
         from semantic_liquidity.train import load_records
         from semantic_liquidity.continual import run_continual
         try:
             with st.spinner("Training sequential tasks..."):
                 result = run_continual(load_records("storage/dataset.jsonl"), operator=continual_operator,
-                                       n_tasks=task_count, epochs=task_epochs, ewc_lambda=ewc_strength)
+                                       n_tasks=task_count, epochs=task_epochs, ewc_lambda=ewc_strength,
+                                       replay_capacity=int(replay_capacity), replay_samples=int(replay_samples))
             st.metric("Mean forgetting (training-set proxy)", f"{result['mean_forgetting']:.3f}")
             matrix = pd.DataFrame(result["accuracy_matrix"],
                                   columns=[f"Task {i+1}" for i in range(task_count)])
@@ -144,3 +147,25 @@ with observability:
             st.caption("Telemetry is appended after each epoch. Reload the dashboard to see new events.")
         except (ValueError, OSError, json.JSONDecodeError) as exc:
             st.error(str(exc))
+
+with tuning:
+    st.subheader("P7 · Optuna hyperparameter search")
+    tune_dataset = st.text_input("Dataset JSONL for tuning", "storage/dataset.jsonl")
+    tune_operators = st.multiselect("Candidate operators", ["baseline", *OPERATOR_NAMES],
+                                    default=["baseline", "softmax_beta"])
+    tune_trials = st.slider("Trials", 1, 50, 8)
+    tune_epochs = st.slider("Maximum epochs per trial", 1, 20, 5)
+    if st.button("Run AutoTuning"):
+        from semantic_liquidity.tuning import run_study
+        try:
+            with st.spinner("Searching hyperparameters on validation data..."):
+                result = run_study(tune_dataset, tune_operators, tune_trials, tune_epochs)
+            st.metric("Best validation macro-F1", f"{result['best_validation_macro_f1']:.3f}")
+            st.json(result["best_params"])
+        except (ValueError, FileNotFoundError, ImportError) as exc:
+            st.error(str(exc))
+    study_path = Path("storage/tuning/study.json")
+    if study_path.exists():
+        report = json.loads(study_path.read_text(encoding="utf-8"))
+        st.caption("Validation-only search; the held-out test has not been evaluated.")
+        st.dataframe(pd.DataFrame(report["results"]), use_container_width=True)
