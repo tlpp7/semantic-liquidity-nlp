@@ -45,3 +45,11 @@ Les invariants: `P >= 0`, `sum_j P_ij = 1`, `0 <= H <= 1` (tolérance numérique
 
 ## Limites
 Le code natif est un prototype CPU; il ne remplace pas l'entraînement PyTorch. D3.js est une bibliothèque de visualisation de données et Three.js une bibliothèque 3D; ne pas les confondre.
+
+## R as a low-level computational participant
+
+R is high-level as a language, but R matrices may feed native Zig kernels through the `.C` pointer ABI adapter. R's column-major layout is explicitly transposed to row-major before calling Zig. The reverse conversion reconstructs the matrix with `byrow=TRUE`.
+
+## SLP v1 protocol (experimental)
+
+`magic=SLP1`, `version=1`, operation ID (1 softmax, 2 entropy), `dtype=1` (float64), flags=0, `rows:u32`, `cols:u32`, `payload_bytes:u64`, `request_id:u64`, followed by little-endian row-major doubles. Fixed header 32 bytes, payload maximum 128 MiB. This is a **binary framing specification**, not an implemented network transport. Never expose it directly to untrusted clients without authentication, rate limiting, checksums and robust parsing.
