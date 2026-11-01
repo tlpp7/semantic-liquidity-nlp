@@ -6,6 +6,7 @@ import statistics
 import time
 from pathlib import Path
 from .layers import OPERATOR_NAMES
+from .train import EXPERIMENTAL_OPERATORS
 from .train import run_training
 
 def dataset_sha256(path):
@@ -40,7 +41,7 @@ def run_benchmark(dataset="storage/dataset.jsonl", operators=None, seeds=(42, 43
     operators = list(operators) if operators is not None else ["baseline", *OPERATOR_NAMES]
     if not operators or len(set(operators)) != len(operators):
         raise ValueError("Choose distinct operators")
-    if any(op != "baseline" and op not in OPERATOR_NAMES for op in operators):
+    if any(op != "baseline" and op not in (*OPERATOR_NAMES, *EXPERIMENTAL_OPERATORS) for op in operators):
         raise ValueError("Unknown operator")
     seeds = tuple(int(s) for s in seeds)
     if not seeds or len(set(seeds)) != len(seeds):
@@ -74,7 +75,7 @@ def run_benchmark(dataset="storage/dataset.jsonl", operators=None, seeds=(42, 43
             import torch
             from .train import TextClassifier
             checkpoint = torch.load(result["checkpoint"], map_location="cpu", weights_only=True)
-            model = TextClassifier(len(checkpoint["vocab"]), len(checkpoint["labels"]), operator=operator)
+            model = TextClassifier(len(checkpoint["vocab"]), len(checkpoint["labels"]), dim=checkpoint.get("dim", 64), operator=operator)
             result["parameter_count"] = sum(p.numel() for p in model.parameters())
             runs.append(result)
             (run_dir / "runs.json").write_text(json.dumps(runs, indent=2), encoding="utf-8")
