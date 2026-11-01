@@ -73,10 +73,11 @@ def scores(logits, labels, classes):
     return accuracy, sum(f1s)/classes
 
 def run_training(dataset="storage/dataset.jsonl", operator="softmax_beta", epochs=5, seed=42,
-                 batch_size=32, lr=1e-3, output_dir="storage/runs", max_length=64):
+                 batch_size=32, lr=1e-3, output_dir="storage/runs", max_length=64,
+                 dim=64, evaluate_test=True, epoch_callback=None):
     if operator not in OPERATOR_NAMES and operator != "baseline":
         raise ValueError("Unknown operator")
-    if epochs < 1 or batch_size < 1:
+    if epochs < 1 or batch_size < 1 or dim < 2 or dim % 2:
         raise ValueError("epochs and batch_size must be positive")
     random.seed(seed)
     torch.manual_seed(seed)
@@ -95,7 +96,7 @@ def run_training(dataset="storage/dataset.jsonl", operator="softmax_beta", epoch
     tr_x, tr_y = encode(train, vocab, labels, max_length)
     va_x, va_y = encode(val, vocab, labels, max_length)
     te_x, te_y = encode(test, vocab, labels, max_length)
-    model = TextClassifier(len(vocab), len(labels), operator=operator)
+    model = TextClassifier(len(vocab), len(labels), dim=dim, operator=operator)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
@@ -135,22 +136,30 @@ def run_training(dataset="storage/dataset.jsonl", operator="softmax_beta", epoch
         if val_loss < best_loss:
             best_loss = val_loss
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        if epoch_callback is not None:
+            epoch_callback(epoch_row)
     model.load_state_dict(best_state)
-    model.eval()
-    with torch.no_grad():
-        test_logits = model(te_x)
-        test_loss = F.cross_entropy(test_logits, te_y).item()
-        test_accuracy, test_f1 = scores(test_logits, te_y, len(labels))
+    test_loss = test_accuracy = test_f1 = None
+    if evaluate_test:
+        model.eval()
+        with torch.no_grad():
+            test_logits = model(te_x)
+            test_loss = F.cross_entropy(test_logits, te_y).item()
+            test_accuracy, test_f1 = scores(test_logits, te_y, len(labels))
     telemetry.log("complete", test_accuracy=test_accuracy, test_macro_f1=test_f1,
                   test_loss=test_loss, **resource_snapshot())
     checkpoint = root / f"{run_id}.pt"
-    torch.save({"model": best_state, "vocab": vocab, "labels": labels, "operator": operator, "max_length": max_length}, checkpoint)
+    torch.save({"model": best_state, "vocab": vocab, "labels": labels, "operator": operator, "max_length": max_length, "dim": dim}, checkpoint)
     result = {"run_id": run_id, "operator": operator, "seed": seed, "epochs": epochs, "train_size": len(train),
               "val_size": len(val), "test_size": len(test), "test_loss": test_loss,
               "test_accuracy": test_accuracy, "test_macro_f1": test_f1, "checkpoint": str(checkpoint), "history": history, "split_method": "stratified", "leakage": leakage,
-              "telemetry": str(telemetry.path)}
+              "telemetry": str(telemetry.path), "dim": dim,
+              "best_val_loss": best_loss,
+              "best_val_macro_f1": max(item["val_macro_f1"] for item in history),
+              "test_evaluated": evaluate_test}
     (root / f"{run_id}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    with sqlite3.connect(root / "experiments.sqlite") as con:
-        con.execute("CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, operator TEXT, seed INTEGER, test_accuracy REAL, test_macro_f1 REAL, checkpoint TEXT)")
-        con.execute("INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?)", (run_id, operator, seed, test_accuracy, test_f1, str(checkpoint)))
+    if evaluate_test:
+        with sqlite3.connect(root / "experiments.sqlite") as con:
+            con.execute("CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, operator TEXT, seed INTEGER, test_accuracy REAL, test_macro_f1 REAL, checkpoint TEXT)")
+            con.execute("INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?)", (run_id, operator, seed, test_accuracy, test_f1, str(checkpoint)))
     return result
