@@ -94,3 +94,16 @@ python scripts/catalog.py hf imdb --split train --text-col text --label-col labe
 Each imported dataset is normalized, deduplicated, content-addressed by SHA-256 and recorded in SQLite with class counts, source and declared license. The Data Catalog tab supports CSV ingestion. Source/license fields are declarations, not automatically verified facts. Kaggle datasets can be downloaded with the existing CLI and then imported into this catalog.
 
 P4/P5 are functional foundations; complete nested cross-validation, dataset cards, license verification and statistical significance reporting in benchmark dashboards remain future enhancements.
+
+## P6 — observability
+
+Training automatically records per-epoch JSONL telemetry alongside checkpoints:
+`storage/runs/<run_id>.telemetry.jsonl`. Events include losses, validation accuracy and macro-F1, epoch duration, gradient norm and max absolute gradient, non-finite gradient count, process RSS (when psutil is installed), and CUDA memory counters (when CUDA is available). Non-finite gradients fail training explicitly.
+
+The Streamlit **Observability** tab displays run metrics and resource/gradient curves. Telemetry is recorded at epoch boundaries, not continuously; refresh the page to read new events. For full GPU profiling, step-level tracing, alerts and distributed aggregation, further work is needed.
+
+```bash
+pip install -e ".[dev,lab]"
+python scripts/train.py --dataset storage/dataset.jsonl --operator baseline --epochs 3
+streamlit run dashboard/app.py
+```
