@@ -9,7 +9,7 @@ from semantic_liquidity import OPERATOR_NAMES
 st.set_page_config(page_title="Semantic Liquidity Lab", layout="wide")
 st.title("Semantic Liquidity Lab")
 st.caption("P1 · Dataset registry, supervised training and reproducible experiment metrics")
-datasets, training, metrics, benchmarks, continual, catalog = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks", "Continual Learning", "Data Catalog"])
+datasets, training, metrics, benchmarks, continual, catalog, observability = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks", "Continual Learning", "Data Catalog", "Observability"])
 with datasets:
     st.subheader("Import CSV")
     upload = st.file_uploader("CSV file", type="csv")
@@ -117,3 +117,30 @@ with catalog:
         st.caption("Use the catalog path as training dataset. Licenses are user-supplied metadata, not verified automatically.")
     else:
         st.info("No catalog datasets yet.")
+
+with observability:
+    from semantic_liquidity.observability import read_events
+    st.subheader("P6 · Training observability")
+    telemetry_files = sorted(Path("storage/runs").glob("*.telemetry.jsonl"), reverse=True)
+    if not telemetry_files:
+        st.info("No telemetry yet. Start a training run to record per-epoch metrics.")
+    else:
+        selected_file = st.selectbox("Telemetry run", telemetry_files, format_func=lambda p:p.name)
+        try:
+            events = read_events(selected_file)
+            epoch_events = [event for event in events if event["event"] == "epoch"]
+            if epoch_events:
+                df = pd.DataFrame(epoch_events).set_index("epoch")
+                st.dataframe(df, use_container_width=True)
+                for columns in (["train_loss", "val_loss"], ["grad_norm", "grad_abs_max"],
+                                ["epoch_seconds"], ["cpu_rss_bytes", "cuda_peak_allocated_bytes"]):
+                    present = [col for col in columns if col in df and df[col].notna().any()]
+                    if present:
+                        st.line_chart(df[present])
+                if "grad_nonfinite" in df and df["grad_nonfinite"].sum() > 0:
+                    st.error("Non-finite gradients detected.")
+            else:
+                st.info("This run has no epoch events yet.")
+            st.caption("Telemetry is appended after each epoch. Reload the dashboard to see new events.")
+        except (ValueError, OSError, json.JSONDecodeError) as exc:
+            st.error(str(exc))
