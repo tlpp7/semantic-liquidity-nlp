@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 from .layers import OPERATOR_NAMES
+from .train import EXPERIMENTAL_OPERATORS
 from .train import run_training
 
 def run_study(dataset, operators=("baseline", "softmax_beta"), trials=12, epochs=8,
@@ -12,7 +13,7 @@ def run_study(dataset, operators=("baseline", "softmax_beta"), trials=12, epochs
         raise ImportError("Install the lab extras: pip install -e '.[lab]'") from exc
     if trials < 1 or epochs < 1 or not operators:
         raise ValueError("Positive trials/epochs and at least one operator required")
-    if any(op not in ("baseline", *OPERATOR_NAMES) for op in operators):
+    if any(op not in ("baseline", *OPERATOR_NAMES, *EXPERIMENTAL_OPERATORS) for op in operators):
         raise ValueError("Unknown operator")
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
