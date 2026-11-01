@@ -107,3 +107,24 @@ pip install -e ".[dev,lab]"
 python scripts/train.py --dataset storage/dataset.jsonl --operator baseline --epochs 3
 streamlit run dashboard/app.py
 ```
+
+## P7 — AutoTuning Engine
+
+Optuna TPE sampling searches operator, learning rate, batch size and hidden dimension. Median pruning stops unpromising trials. The objective is **validation macro-F1**; the test set is not scored during search.
+
+```bash
+pip install -e ".[dev,lab]"
+python scripts/tune.py --dataset storage/dataset.jsonl --operators baseline softmax_beta coupled_dynamics --trials 12 --epochs 8
+```
+
+Results: `storage/tuning/study.json`, with trial artifacts in `storage/tuning/trials/`. The dashboard adds an **AutoTuning** tab. Repeated tuning on one validation split can overfit that split; use an independent final test once after selection. Tuning uses equal maximum epochs, not strictly equal FLOPs.
+
+## P8 — Memory Engine (first implementation)
+
+A bounded reservoir-sampling replay buffer stores previous observations, samples them for rehearsal on later tasks and reports retained class counts. It can be combined with the existing EWC penalty.
+
+```bash
+python scripts/continual.py --dataset storage/dataset.jsonl --tasks 3 --epochs 2 --ewc-lambda 1.0 --replay-capacity 256 --replay-samples 64
+```
+
+The **Continual Learning** tab exposes replay controls. P8 currently provides experience replay plus EWC; dual-timescale memory, independent held-out task evaluations, class-balanced replay and adaptive consolidation are not yet implemented. Stored replay records may contain private text; keep storage access restricted.
