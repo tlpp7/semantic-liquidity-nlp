@@ -23,4 +23,6 @@ def test_sequential_smoke(tmp_path):
                            seed=3, output_dir=tmp_path)
     assert len(result["accuracy_matrix"]) == 2
     assert len(result["accuracy_matrix"][0]) == 2
-    assert (tmp_path / "continual-baseline-3-0.0.json").exists()
+    saved = tmp_path / "continual-baseline-3-0.0-replay0-0.json"
+    assert saved.exists()
+    assert json.loads(saved.read_text(encoding="utf-8")) == result
