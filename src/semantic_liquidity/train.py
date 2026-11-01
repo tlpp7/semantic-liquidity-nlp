@@ -10,6 +10,7 @@ from torch import nn
 from torch.nn import functional as F
 from .layers import SemanticLiquidityLayer, OPERATOR_NAMES
 from .validation import stratified_split, leakage_report, detect_exact_duplicates
+from .observability import TelemetryWriter, gradient_metrics, resource_snapshot
 
 PAD, UNK = "<pad>", "<unk>"
 
@@ -100,9 +101,14 @@ def run_training(dataset="storage/dataset.jsonl", operator="softmax_beta", epoch
     root.mkdir(parents=True, exist_ok=True)
     run_id = f"{int(time.time()*1000)}-{seed}-{operator}"
     history = []
+    telemetry = TelemetryWriter(root / f"{run_id}.telemetry.jsonl", run_id)
+    telemetry.log("start", operator=operator, seed=seed, epochs=epochs, batch_size=batch_size,
+                  train_size=len(train), val_size=len(val), test_size=len(test), **resource_snapshot())
     best_loss = float("inf")
     best_state = None
     for epoch in range(1, epochs+1):
+        epoch_started = time.perf_counter()
+        last_grad = None
         model.train()
         permutation = torch.randperm(len(tr_x))
         total = 0.0
@@ -111,6 +117,9 @@ def run_training(dataset="storage/dataset.jsonl", operator="softmax_beta", epoch
             logits = model(tr_x[ids])
             loss = F.cross_entropy(logits, tr_y[ids])
             loss.backward()
+            last_grad = gradient_metrics(model)
+            if last_grad["grad_nonfinite"]:
+                raise FloatingPointError("Non-finite gradients detected")
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             total += loss.item() * len(ids)
@@ -119,7 +128,10 @@ def run_training(dataset="storage/dataset.jsonl", operator="softmax_beta", epoch
             val_logits = model(va_x)
             val_loss = F.cross_entropy(val_logits, va_y).item()
             acc, f1 = scores(val_logits, va_y, len(labels))
-        history.append({"epoch": epoch, "train_loss": total/len(tr_x), "val_loss": val_loss, "val_accuracy": acc, "val_macro_f1": f1})
+        epoch_row = {"epoch": epoch, "train_loss": total/len(tr_x), "val_loss": val_loss, "val_accuracy": acc, "val_macro_f1": f1}
+        history.append(epoch_row)
+        telemetry.log("epoch", **epoch_row, epoch_seconds=time.perf_counter()-epoch_started,
+                      **(last_grad or {}), **resource_snapshot())
         if val_loss < best_loss:
             best_loss = val_loss
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
@@ -129,11 +141,14 @@ def run_training(dataset="storage/dataset.jsonl", operator="softmax_beta", epoch
         test_logits = model(te_x)
         test_loss = F.cross_entropy(test_logits, te_y).item()
         test_accuracy, test_f1 = scores(test_logits, te_y, len(labels))
+    telemetry.log("complete", test_accuracy=test_accuracy, test_macro_f1=test_f1,
+                  test_loss=test_loss, **resource_snapshot())
     checkpoint = root / f"{run_id}.pt"
     torch.save({"model": best_state, "vocab": vocab, "labels": labels, "operator": operator, "max_length": max_length}, checkpoint)
     result = {"run_id": run_id, "operator": operator, "seed": seed, "epochs": epochs, "train_size": len(train),
               "val_size": len(val), "test_size": len(test), "test_loss": test_loss,
-              "test_accuracy": test_accuracy, "test_macro_f1": test_f1, "checkpoint": str(checkpoint), "history": history, "split_method": "stratified", "leakage": leakage}
+              "test_accuracy": test_accuracy, "test_macro_f1": test_f1, "checkpoint": str(checkpoint), "history": history, "split_method": "stratified", "leakage": leakage,
+              "telemetry": str(telemetry.path)}
     (root / f"{run_id}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     with sqlite3.connect(root / "experiments.sqlite") as con:
         con.execute("CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, operator TEXT, seed INTEGER, test_accuracy REAL, test_macro_f1 REAL, checkpoint TEXT)")
