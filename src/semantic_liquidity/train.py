@@ -9,6 +9,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from .layers import SemanticLiquidityLayer, OPERATOR_NAMES
+from .coupling import CoupledSemanticLayer
+from .semantic_graph import SemanticGraphLayer
+EXPERIMENTAL_OPERATORS = ('coupled_v2', 'graph_semantic')
 from .validation import stratified_split, leakage_report, detect_exact_duplicates
 from .observability import TelemetryWriter, gradient_metrics, resource_snapshot
 
@@ -50,7 +53,14 @@ class TextClassifier(nn.Module):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, dim, padding_idx=0)
         self.encoder = nn.GRU(dim, dim//2, batch_first=True, bidirectional=True)
-        self.liquidity = SemanticLiquidityLayer(dim=dim, operator=operator) if operator != "baseline" else nn.Identity()
+        if operator == "baseline":
+            self.liquidity = nn.Identity()
+        elif operator == "coupled_v2":
+            self.liquidity = CoupledSemanticLayer(dim=dim)
+        elif operator == "graph_semantic":
+            self.liquidity = SemanticGraphLayer(dim=dim)
+        else:
+            self.liquidity = SemanticLiquidityLayer(dim=dim, operator=operator)
         self.classifier = nn.Linear(dim, classes)
 
     def forward(self, tokens):
@@ -75,7 +85,7 @@ def scores(logits, labels, classes):
 def run_training(dataset="storage/dataset.jsonl", operator="softmax_beta", epochs=5, seed=42,
                  batch_size=32, lr=1e-3, output_dir="storage/runs", max_length=64,
                  dim=64, evaluate_test=True, epoch_callback=None):
-    if operator not in OPERATOR_NAMES and operator != "baseline":
+    if operator not in (*OPERATOR_NAMES, *EXPERIMENTAL_OPERATORS, "baseline"):
         raise ValueError("Unknown operator")
     if epochs < 1 or batch_size < 1 or dim < 2 or dim % 2:
         raise ValueError("epochs and batch_size must be positive")
