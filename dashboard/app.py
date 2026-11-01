@@ -5,11 +5,12 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from semantic_liquidity import OPERATOR_NAMES
+from semantic_liquidity.train import EXPERIMENTAL_OPERATORS
 
 st.set_page_config(page_title="Semantic Liquidity Lab", layout="wide")
 st.title("Semantic Liquidity Lab")
 st.caption("P1 · Dataset registry, supervised training and reproducible experiment metrics")
-datasets, training, metrics, benchmarks, continual, catalog, observability, tuning = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks", "Continual Learning", "Data Catalog", "Observability", "AutoTuning"])
+datasets, training, metrics, benchmarks, continual, catalog, observability, tuning, research = st.tabs(["Datasets", "Training", "Metrics", "Benchmarks", "Continual Learning", "Data Catalog", "Observability", "AutoTuning", "P9–P10 Research"])
 with datasets:
     st.subheader("Import CSV")
     upload = st.file_uploader("CSV file", type="csv")
@@ -25,7 +26,7 @@ with datasets:
         except ValueError as e:
             st.error(str(e))
 with training:
-    operator = st.selectbox("Operator", ["baseline", *OPERATOR_NAMES])
+    operator = st.selectbox("Operator", ["baseline", *OPERATOR_NAMES, *EXPERIMENTAL_OPERATORS])
     epochs = st.slider("Epochs", 1, 30, 5)
     seed = st.number_input("Seed", min_value=0, max_value=100000, value=42)
     dataset = st.text_input("Normalized JSONL dataset", "storage/dataset.jsonl")
@@ -169,3 +170,40 @@ with tuning:
         report = json.loads(study_path.read_text(encoding="utf-8"))
         st.caption("Validation-only search; the held-out test has not been evaluated.")
         st.dataframe(pd.DataFrame(report["results"]), use_container_width=True)
+
+with research:
+    from semantic_liquidity.coupling import CoupledSemanticLayer
+    from semantic_liquidity.semantic_graph import SemanticGraphLayer, graph_data
+    import torch
+    st.subheader("P9 · Coupled entropy, temperature and plasticity")
+    st.caption("Untrained synthetic diagnostics; these plots are not evidence of NLP improvement.")
+    d = st.slider("Embedding dimensions", 8, 64, 16, step=8)
+    n = st.slider("Semantic prototypes", 4, 20, 8)
+    target = st.slider("Target normalized entropy", 0.0, 1.0, 0.5)
+    strength = st.slider("Coupling strength", 0.0, 1.0, 0.5)
+    torch.manual_seed(42)
+    probe = torch.randn(1, 16, d)
+    layer = CoupledSemanticLayer(dim=d, prototypes=n, entropy_target=target, coupling_strength=strength)
+    with torch.no_grad():
+        _, diagnostics = layer(probe, return_diagnostics=True)
+    df = pd.DataFrame({
+        "token": list(range(16)),
+        "entropy": diagnostics["entropy"][0, :, 0].tolist(),
+        "temperature": diagnostics["temperature"][0, :, 0].tolist(),
+        "plasticity": diagnostics["plasticity"][0, :, 0].tolist(),
+        "stability": diagnostics["stability"][0, :, 0].tolist()
+    }).set_index("token")
+    st.line_chart(df)
+    st.subheader("P10 · Prototype graph and message passing")
+    top_k = st.slider("Neighbors per prototype", 1, n - 1, min(3, n - 1))
+    steps = st.slider("Message passing steps", 1, 5, 2)
+    graph_layer = SemanticGraphLayer(dim=d, prototypes=n, top_k=top_k, steps=steps)
+    graph = graph_data(graph_layer)
+    st.caption("Rows represent source prototypes; columns represent destination prototypes.")
+    import plotly.express as px
+    st.plotly_chart(px.imshow(graph["adjacency"], color_continuous_scale="Blues",
+                              labels={"x": "Destination", "y": "Source", "color": "Weight"}),
+                    use_container_width=True)
+    st.metric("Directed non-self edges (nonzero softmax)", len(graph["edges"]))
+    st.dataframe(pd.DataFrame(graph["edges"]), use_container_width=True)
+    st.caption("Adjacency uses differentiable softmax on a top-k graph; this view uses random untrained prototypes.")
