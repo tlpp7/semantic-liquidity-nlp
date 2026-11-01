@@ -8,7 +8,6 @@ slp_encode <- function(x, op = 1L, request_id = 0) {
   u32 <- function(v) writeBin(as.integer(v), raw(), size=4L, endian="little")
   # Request IDs are constrained to <=2^32-1 for exact portable R encoding.
   if (request_id > 2^32-1) stop("R encoder currently supports 32-bit request IDs")
-  u64 <- function(v) c(u32(v %% 2^31), u32(floor(v / 2^31) / 2))
   # Explicit low/high 32-bit words without signed integer overflow.
   u64 <- function(v) {
     low <- v %% 2^32; high <- floor(v / 2^32)
