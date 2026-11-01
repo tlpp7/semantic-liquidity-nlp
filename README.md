@@ -128,3 +128,22 @@ python scripts/continual.py --dataset storage/dataset.jsonl --tasks 3 --epochs 2
 ```
 
 The **Continual Learning** tab exposes replay controls. P8 currently provides experience replay plus EWC; dual-timescale memory, independent held-out task evaluations, class-balanced replay and adaptive consolidation are not yet implemented. Stored replay records may contain private text; keep storage access restricted.
+
+## P9 — Coupled mathematical dynamics
+
+`CoupledSemanticLayer` combines adaptive temperature, normalized prototype entropy, a learned plasticity **gate** (not parameter mutation), target-entropy stability and a residual projection. The module returns per-token diagnostics and an optional entropy regularizer. This is a testable mathematical hypothesis, not a biologically validated model.
+
+## P10 — Semantic prototype graph
+
+`SemanticGraphLayer` builds a cosine-similarity top-k prototype graph, performs differentiable normalized message passing and routes token representations through the resulting nodes. `graph_data` exports nodes, weighted directed edges and adjacency for visualization.
+
+Both are selectable in training, benchmarking and Optuna under `coupled_v2` and `graph_semantic`; the original 30 operators remain unchanged.
+
+```bash
+python scripts/train.py --dataset storage/dataset.jsonl --operator coupled_v2 --epochs 3
+python scripts/train.py --dataset storage/dataset.jsonl --operator graph_semantic --epochs 3
+python scripts/benchmark.py --dataset storage/dataset.jsonl --operators baseline coupled_v2 graph_semantic --seeds 42 43 44 --epochs 5
+streamlit run dashboard/app.py
+```
+
+The **P9–P10 Research** tab visualizes synthetic, untrained coupling diagnostics and a prototype adjacency heatmap. Results should be evaluated on real data against the baseline before any performance claim. Hard top-k neighbor selection is piecewise differentiable; adjacency weights and message passing remain differentiable for selected edges.
